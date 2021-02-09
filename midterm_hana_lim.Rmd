@@ -1,0 +1,168 @@
+---
+title: "Stats 140SL Midterm"
+author: "Hana Yerin Lim"
+date: "2/2/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data Preparation 
+```{r}
+library(readr)
+library(ggplot2)
+library(dplyr)
+data <- read_csv("myMTdata.csv")
+```
+
+# Data Description 
+## 1. 
+### a) how many non-numeric fields are present?
+```{r}
+table(unlist(lapply(data, is.numeric)))
+```
+
+There are 4 non-numeric fields present in the dataset. 
+
+### b) how many numeric fields are present, clearly identify which are discrete and which should be treated as continuous?
+```{r}
+numeric_cols <- data[which(unlist(lapply(data, is.numeric)))]
+sort(unlist(lapply(numeric_cols, function(x) sum(!duplicated(x)))))
+```
+
+There are 14 numeric fields present in the dataset. In order to observe the amounts of nonduplicated values per column, I wrote the code that counts the non-duplicated values for each columns. Based on the dimension of the dataset (1130 rows, 18 columns), around **7** fields are considered continuous because of the amounts of their unique values. 
+
+### c) how many observations were in your dataset
+```{r}
+# check to see if there are any NA values 
+# data[which(is.na(data)), ]
+# There is no NA value so no rows will be removed 
+dim(data)
+```
+
+There are `r dim(data)[1]` observations in the dataset. 
+
+### a) Duration was measured in 3 different ways, please construct a total duration variable and provide an appropriate statistical summary for your duration variable (you can define a “statistical summary” for us)
+```{r}
+newdata <- data %>% mutate(total_duration = Administrative_Duration + Informational_Duration + ProductRelated_Duration)
+summary(newdata$total_duration)
+```
+
+The mean of the total duration on the website is 1292.3 minutes, the 25th percentile is 207.7 minutes, the 75th percentile is 1604.2 minutes, the minimum is 0 minute, and the maximum is 17782.9 minutes. 
+
+### b) The field “Browser” has numerous values, but two of the values dominate. Please recode/reconstruct “Browser” in such a way that there are only three possible values – the two dominant values and all other. Then, tell us whether there is evidence that duration differs by the value of your new “Browser” variable.
+
+#### i) 
+```{r}
+# Table before reconstruction 
+newdata1 <- newdata
+table(newdata1$Browser)
+
+newdata1[which(newdata1$Browser >= 3),]$Browser <- 3
+# Table after reconstruction 
+table(newdata1$Browser)
+```
+
+Reconstructed "Browser" that there are only three possible values: 1, 2, and 3. 
+
+#### ii) 
+H0: Duration does not differ by the value of the new Browser variable. 
+Ha: Duration differs by the value of the new Browser variable. 
+```{r}
+summary(aov(Browser ~ total_duration, data = newdata1))
+```
+
+Based on the ANOVA test, the p-value is 0.0687. When the significance value is 0.05, we fail to reject the null hypothesis and thus there is no evidence that the duration differs by the value of the new Browser variable. However, when the significance value is 0.1, we reject the null hypothesis and thus we can conclude that there is an evidence to support that duration differs by the value of the new Browser variable. 
+
+### c) Which Month/VisitorType (omit VisitorType = Other) combination has the highest proportion of Revenue = TRUE?
+```{r}
+newdata1 %>% filter(VisitorType != "Other") %>% 
+  group_by(VisitorType, Month, Revenue) %>% 
+  summarise(rev_true = n()) %>% 
+  mutate(prop = rev_true / sum(rev_true)) %>% 
+  filter(Revenue == "TRUE") %>% 
+  arrange(desc(prop))
+```
+
+Returning Visitor and the month of September combination has the highest proportion of the Revenue when it is true by the proportion of 0.35714286. 
+
+## 2.
+```{r}
+library(gridExtra)
+# Page values 
+ggplot(data = newdata1, aes(PageValues, Revenue, fill = Revenue)) + 
+  geom_boxplot() + 
+  ggtitle("Relationship between Page Values and Revenue") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15), legend.title = element_text(size = 10), legend.text = element_text(size = 10))
+
+# Total duration
+rev_t <- newdata1 %>% filter(Revenue == "TRUE")
+rev_f <- newdata1 %>% filter(Revenue == "FALSE")
+
+ggplot(newdata1, aes(total_duration, fill = Revenue)) + 
+  geom_histogram(bins = 30, alpha = 0.7) +
+  geom_vline(aes(xintercept = mean(rev_t$total_duration), color = "Mean_true")) + 
+  geom_vline(aes(xintercept = mean(rev_f$total_duration), color = "Mean_false")) +
+  scale_color_manual(name = "Means", values = c(Mean_true = "blue", Mean_false = "red")) + 
+  annotate("text", x = c(10000,10000), y = c(250, 230), label = c("Average Total Duration When Revenue True = 2099.5", "Average Total Duration When Revenue False = 1128.1")) +
+  ggtitle("Histogram of Total Duration") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15), legend.title = element_text(size = 10), legend.text = element_text(size = 10))
+
+# Bounce and exit rates 
+bounce_rev <- ggplot(newdata1, aes(x = Revenue, y = BounceRates, fill = Revenue)) + geom_boxplot() +
+  ggtitle("Relationship between Bounce Rates and Revenue") +
+  theme(plot.title = element_text(hjust = 0.5, size = 10), legend.title = element_text(size = 7), 
+               legend.text = element_text(size = 7), legend.key.size = unit(0.8,"line"))
+  
+exit_rev <- ggplot(newdata1, aes(x = Revenue, y = ExitRates, fill = Revenue)) + geom_boxplot() + 
+  ggtitle("Relationship between Exit Rates and Revenue") +
+  theme(plot.title = element_text(hjust = 0.5, size = 10), legend.title = element_text(size = 7), 
+               legend.text = element_text(size = 7), legend.key.size = unit(0.8,"line"))
+
+grid.arrange(bounce_rev, exit_rev, ncol = 2)
+
+# Months
+newdata1$Month <- factor(newdata1$Month, levels = c("Feb",  "Mar",  "May", "June", "Jul" , "Aug" , "Sep" ,"Oct",  "Nov", "Dec"))
+ct_mo <- suppressWarnings(ggplot(newdata1 %>% group_by(Month, Revenue) %>% summarise(count = n()), aes(x = reorder(Month, -count, FUN = sum), y = count, fill = Revenue)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = count), vjust=1, position = position_dodge(0.9)) + 
+  ggtitle("The Amount of Generated Revenue Per Months") +
+  theme(plot.title = element_text(hjust = 0.5, size = 15), legend.title = element_text(size = 10), 
+               legend.text = element_text(size = 10)) + 
+  labs(x = "Months"))
+
+proportion <- newdata1 %>% 
+  group_by(Month, Revenue) %>% 
+  summarise(rev_true = n()) %>% 
+  mutate(prop = rev_true / sum(rev_true)) %>% 
+  filter(Revenue == "TRUE") %>% 
+  arrange(desc(prop))
+
+prop_mo <- ggplot(proportion, aes(x = reorder(Month, -prop), y = prop, fill = Month)) + geom_bar(stat = "identity") + 
+  geom_text(aes(label = paste0(round(prop,3)*100, "%")), vjust=1, position = position_dodge(0.9)) + 
+  labs(x = "Month") + ggtitle("The Proportion of Revenue Made Per Months") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15), legend.title = element_text(size = 10), 
+               legend.text = element_text(size = 10))
+
+grid.arrange(ct_mo, prop_mo)
+```
+
+Description is in video presentation. 
+
+## 3. 
+```{r}
+library(reshape2)
+glm_mod <- glm(Revenue ~ ., family = "binomial", data = newdata1)
+summary(glm_mod)
+
+df <- newdata1[, -which(lapply(newdata1, is.numeric) == FALSE)]
+subset(melt(cor(df)), value > 0.5 & value < 1)
+```
+
+One of the efficient methods to identify the fields that are significant for understanding user generated revenue is to create a summary of generalized linear model(glm). Glm function calculates the significance of each variables to Revenue variable, standard error, z-value, deviance, and P-values, which could be used to find the significant predictors. **Page values, Exit Rates, and Visitor Type (other)** are the most significant fields out of 18 fields provided in the dataset. The reason is that the p-values for these fields are less than the significant values, which represent the significance effects on the revenue variable. Furthermore, when the correlation is calculated, we can observe that ExitRates variable is highly correlated with BounceRates, which indicates that BounceRates also play a significant role on the revenue. Therefore, it is important to think about how the page values, bounce and exit rates, and specifically "other" visitor type cause any difference in revenue, and how revenue is created each month. 
+
+In addition to the current and previous question, the amounts of users in November, May, December, and March are relatively higher than the amounts in other months. This might be due to the holiday seasons such as Thanksgiving (September), Memorial day, Mother's day (May), Christmas, end of the year sales (December), and much more. However, we can observe from the proportion barplot that the proportions of revenue true during these months (December, May, Mar) are the lowest three. So, it is important to drive a solution to minimize the false revenue.  
